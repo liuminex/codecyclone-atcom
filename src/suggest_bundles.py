@@ -14,8 +14,8 @@ genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 model = genai.GenerativeModel(os.getenv("GEMINI_MODEL"))
 
 # Load data
-orders = pd.read_csv("../data/orders.csv", parse_dates=["CreatedDate"])
-inventory = pd.read_csv("../data/inventory.csv")
+orders = pd.read_csv("../data/custom_orders.csv", parse_dates=["CreatedDate"])
+inventory = pd.read_csv("../data/custom_inventory.csv")
 
 orders = orders.dropna(subset=["UserID"])
 

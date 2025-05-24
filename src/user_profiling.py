@@ -20,8 +20,36 @@ orders_df = orders_df.dropna(subset=['UserID'])
 
 # Predefined category segments
 category_segments = [
-    "clothes", "electronics", "beauty", "sports", "home", "health",
-    "toys", "books", "automotive", "grocery", "furniture", "undetermined"
+    "Beauty Products",
+    "Men's Clothing",
+    "Women's Clothing",
+    "Makeup",
+    "Perfumes & Fragrances",
+    "Sports & Outdoors",
+    "Home & Kitchen",
+    "Electronics",
+    "Bags & Accessories",
+    "Shoes",
+    "Kids & Baby",
+    "Jewelry",
+    "Underwear & Lingerie",
+    "Swimwear",
+    "Home Decor",
+    "Bath & Body",
+    "Skin Care",
+    "Hair Care",
+    "Bedding",
+    "Towels",
+    "Christmas Decor",
+    "Office Supplies",
+    "Kitchenware",
+    "Dining",
+    "Athletic Clothing",
+    "Outerwear",
+    "Jeans",
+    "Pajamas",
+    "Socks & Hosiery",
+    "Travel Accessories"
 ]
 
 import re
