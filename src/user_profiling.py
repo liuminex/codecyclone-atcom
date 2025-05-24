@@ -67,11 +67,39 @@ def determine_user_attributes_gemini(shopping_data_lines):
 
 
 
+
 def get_user_profile(userid):
     user_orders = orders_df[orders_df['UserID'] == userid].copy()
 
     if user_orders.empty:
         return f"No data found for UserID {userid}"
+
+    # Determine discounted vs full price items
+    user_orders['DiscountAmount'] = (user_orders['OriginalUnitPrice'] - user_orders['FinalUnitPrice']).clip(lower=0)
+    user_orders['HasDiscount'] = user_orders['DiscountAmount'] > 0
+
+    # Calculate discount preference
+    total_discounted_quantity = user_orders[user_orders['HasDiscount']]['Quantity'].sum()
+    total_fullprice_quantity = user_orders[~user_orders['HasDiscount']]['Quantity'].sum()
+    total_quantity = total_discounted_quantity + total_fullprice_quantity
+
+    discount_preference = (
+        round(total_discounted_quantity / total_quantity, 4)
+        if total_quantity > 0 else None
+    )
+
+    # Calculate average discount (only for discounted rows)
+    discounted = user_orders[user_orders['HasDiscount']]
+    if not discounted.empty:
+        average_discount = (
+            (discounted['DiscountAmount'] / discounted['OriginalUnitPrice'])
+            .replace([float('inf'), -float('inf')], pd.NA)
+            .dropna()
+            .mean()
+        )
+        average_discount = round(average_discount, 4)
+    else:
+        average_discount = 0.0
 
     # Most frequent products by order count
     sku_order_counts = (
@@ -80,15 +108,12 @@ def get_user_profile(userid):
         .reset_index(name='TimesOrdered')
     )
 
-    # Filter out products bought less than 2 times
     sku_order_counts = sku_order_counts[sku_order_counts['TimesOrdered'] >= 2]
-
     sku_order_counts = sku_order_counts.sort_values(by='TimesOrdered', ascending=False)
 
     sku_order_counts = sku_order_counts.merge(
         user_orders[['SKU', 'Item title']].drop_duplicates(), on='SKU', how='left'
     )
-
 
     # Order frequency
     user_order_dates = user_orders[['OrderNumber', 'CreatedDate']].drop_duplicates().sort_values(by='CreatedDate')
@@ -105,18 +130,16 @@ def get_user_profile(userid):
         else "No strong seasonal trend."
     )
 
-    # Filter user_orders to only include top 10 most bought SKUs
+    # Top 10 SKUs for profiling
     top_10_skus = sku_order_counts.head(10)['SKU'].tolist()
     top_orders = user_orders[user_orders['SKU'].isin(top_10_skus)]
 
-    # Prepare shopping history lines based on top 10 SKUs, unique by Category, Brand, and Item title
     unique_rows = top_orders[['Category', 'Brand', 'Item title']].drop_duplicates().astype(str)
     shopping_history_lines = unique_rows.apply(
         lambda row: f"{row['Category']} | {row['Brand']} | {row['Item title']}",
         axis=1
     ).tolist()
 
-    # Get user attributes from Gemini
     user_attributes = determine_user_attributes_gemini(shopping_history_lines)
 
     return {
@@ -124,8 +147,11 @@ def get_user_profile(userid):
         "MostFrequentProducts": sku_order_counts[['SKU', 'Item title', 'TimesOrdered']].to_dict(orient='records'),
         "AverageDaysBetweenOrders": round(avg_days_between_orders, 2) if not pd.isna(avg_days_between_orders) else "Only one order",
         "SeasonalTrend": seasonal_trend,
-        "UserAttributes": user_attributes
+        "UserAttributes": user_attributes,
+        "DiscountPreference": discount_preference,
+        "AverageDiscount": average_discount
     }
+
 
 
 
