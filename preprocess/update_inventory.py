@@ -5,9 +5,6 @@ import numpy as np
 inventory_df = pd.read_csv('../data/inventory.csv')
 orders_df = pd.read_csv('../data/custom_orders.csv', parse_dates=['CreatedDate'])
 
-print(f"Inventory columns before update: {inventory_df.columns.tolist()}")
-print(f"Orders columns: {orders_df.columns.tolist()}")
-
 # Ensure relevant columns exist in inventory
 if 'ProductCategory' not in inventory_df.columns:
     inventory_df['ProductCategory'] = None
@@ -21,6 +18,14 @@ if 'Margin' not in inventory_df.columns:
 
 # Drop rows with missing SKU or CreatedDate in orders
 orders_df = orders_df.dropna(subset=['SKU', 'CreatedDate'])
+
+# Base price (mean OriginalUnitPrice) per SKU
+base_price = (
+    orders_df.groupby('SKU')['OriginalUnitPrice']
+    .mean()
+    .reset_index()
+    .rename(columns={'OriginalUnitPrice': 'BasePrice'})
+)
 
 # Discount calculation
 orders_df['DiscountAmount'] = (orders_df['OriginalUnitPrice'] - orders_df['FinalUnitPrice']).clip(lower=0)
@@ -44,7 +49,6 @@ pivot = grouped.pivot(index='SKU', columns='HasDiscount', values='OrderCount').f
 pivot.columns = ['OrderCount_FullPrice' if not col else 'OrderCount_Discounted' for col in pivot.columns]
 
 # Calculate ratio, avoid division by zero
-## OrderCount_Ratio_Discounted_vs_FullPrice: inf means it is bought only on discount, 5 means for every item bought without discount, 5 items are bought with discount
 pivot['OrderCount_Ratio_Discounted_vs_FullPrice'] = pivot['OrderCount_Discounted'] / pivot['OrderCount_FullPrice'].replace(0, np.nan)
 pivot['OrderCount_Ratio_Discounted_vs_FullPrice'] = pivot['OrderCount_Ratio_Discounted_vs_FullPrice'].fillna(np.inf)
 pivot = pivot.reset_index()
@@ -120,9 +124,16 @@ updated_inventory['OrderCount_Ratio_Discounted_vs_FullPrice'] = updated_inventor
 updated_inventory = updated_inventory.merge(seasonality, on='SKU', how='left')
 updated_inventory['Seasonality'] = updated_inventory['Seasonality'].fillna('all year')
 
+# Merge base price
+updated_inventory = updated_inventory.merge(base_price, on='SKU', how='left')
+updated_inventory['BasePrice'] = updated_inventory['BasePrice'].fillna(0)
+
 # Round numeric columns to 2 decimals
 numeric_cols = updated_inventory.select_dtypes(include=['float64', 'int64']).columns
 updated_inventory[numeric_cols] = updated_inventory[numeric_cols].round(2)
+
+# remove lines from inventory that have quantity < 1:
+updated_inventory = updated_inventory[updated_inventory['Quantity'] >= 1]
 
 # Save
 updated_inventory.to_csv('../data/custom_inventory.csv', index=False)

@@ -2,4 +2,4 @@ notes.txt
 .~lock.DATA.*
 .bak
 .env
-
+.pyc
