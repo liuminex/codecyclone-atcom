@@ -379,9 +379,19 @@ def get_all_bundles(userId):
     bundles.sort(key=lambda x: x['added_profit'], reverse=True)
     print(f"Total bundles found: {len(bundles)}")
     print(f"Top bundles by added profit:")
+
+    total_added_profit = 0
     for b in bundles[:20]:
         print(f"\n\tBundle: {b['bundle']}, Added Profit: ${b['added_profit']:.2f}, Type: {b['bundle_type']}")
+        total_added_profit += b['added_profit']
 
+    avg_added_profit = get_average_added_profit(bundles)
+    return bundles, avg_added_profit
+
+
+def get_average_added_profit(example_user_id):
+    _, avg = get_all_bundles(example_user_id)
+    return avg
 
 
 if __name__ == "__main__":
