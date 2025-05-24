@@ -159,17 +159,18 @@ def get_bundle_personal_frequently_bought(user_profile, priority=None, depth=5):
     }
     """
     top_skus = [item['SKU'] for item in user_orders if 'SKU' in item]
-    top_skus = top_skus[:2]  # Get top 2 SKUs
+    # keep top 2 that exist in inventory_df
+    top_skus = [sku for sku in top_skus if sku in inventory_df['SKU'].values][:2]
 
     if len(top_skus) < 2:
-        return None
+        return []
 
     if priority == "SKU":
         third_product = inventory_df.sort_values(by='SKU').iloc[0]['SKU']
     else:
         third_product = inventory_df.sort_values(by='Margin').iloc[0]['SKU']
 
-    return sku_bundle_to_name((top_skus[0], top_skus[1], third_product), sku_to_name)
+    return [sku_bundle_to_name((top_skus[0], top_skus[1], third_product), sku_to_name)]
 
 
 def get_bundle_personal_seasonal(user_profile, season=None, priority=None, depth=5):
@@ -189,44 +190,34 @@ def get_bundle_personal_seasonal(user_profile, season=None, priority=None, depth
     user_id = user_profile.get("UserID")
     user_seasonality = season or user_profile.get('SeasonalTrend', None)
     if not user_seasonality:
-        return None
+        return []
 
-    # Filter user's orders
-    user_orders = orders[orders['UserID'] == user_id]
-    user_top_products = (
-        user_orders['Item title'].value_counts().reset_index()
-        .rename(columns={'index': 'ProductName', 'Item title': 'Count'})
-    )
+    print(f"User {user_id} seasonal preference: {user_seasonality}")
 
-    # Find products the user bought that match their seasonal preference
-    matching_user_products = user_top_products[
-        user_top_products['ProductName'].isin(
-            inventory_df[inventory_df['Seasonality'].str.contains(user_seasonality, case=False, na=False)]['ProductName']
-        )
-    ]
+    # from all products in user_profile['MostFrequentProducts'] find the one that has the same seasonality
+    user_products = user_profile['MostFrequentProducts']
+    user_skus = [item['SKU'] for item in user_products if 'SKU' in item]
+    user_top_product = None
+    for sku in user_skus:
+        product_row = inventory_df[inventory_df['SKU'] == sku]
+        if not product_row.empty and user_seasonality in product_row['Seasonality'].values[0]:
+            user_top_product = sku
+            break
+    if not user_top_product:
+        print(f"No top product found for user {user_id} with seasonality {user_seasonality}.")
+        return []
+    print(f"User {user_id} top product for seasonality {user_seasonality}: {user_top_product}")
 
-    if matching_user_products.empty:
-        return None
-
-    first_product = matching_user_products.iloc[0]['ProductName']
-
-    # Exclude products the user already frequently buys
-    user_purchased_names = set(user_top_products['ProductName'])
-
-    # Candidates: same seasonality, not in user's frequent buys
-    candidates = inventory_df[
-        inventory_df['Seasonality'].str.contains(user_seasonality, case=False, na=False) &
-        ~inventory_df['ProductName'].isin(user_purchased_names)
-    ]
-
-    if candidates.empty:
-        return None
-
+    # Find another product with the same seasonality that the user doesn't buy
+    seasonal_products = inventory_df[inventory_df['Seasonality'].str.contains(user_seasonality, case=False)]
+    seasonal_products = seasonal_products[~seasonal_products['SKU'].isin(user_skus)]
+    if seasonal_products.empty:
+        print(f"No other products found for user {user_id} with seasonality {user_seasonality}.")
+        return []
     if priority == "SKU":
-        candidates = candidates.sort_values(by='SKU')
-        second_product = candidates.iloc[0]['ProductName']
+        second_product = seasonal_products.sort_values(by='SKU').iloc[0]['SKU']
     else:
-        second_product = candidates.sample(1)['ProductName'].iloc[0]
+        second_product = seasonal_products.sort_values(by='Margin').iloc[0]['SKU']
 
     return [first_product, second_product]
 
@@ -234,7 +225,7 @@ def get_bundle_personal_seasonal(user_profile, season=None, priority=None, depth
 
 def get_bundle_personalized_discounts(user_profile):
     """
-    Gets profile data from userid, anf from there if discount_preference > 0.6 then
+    Gets profile data from userid, and from there if discount_preference > 0.6 then
     sort products in custom_inventory.csv by SKU and create one bundle of the top 3 products,
     and one bundle of the top 2 producs. Return the 2 bundles.
     """
@@ -337,19 +328,27 @@ def get_all_bundles(userId):
 
     print(f"Fetching complementary bundles...")
     next_bundles = get_bundle_complementary(priority="SKU", depth=5)
-    bundles.append(next_bundles)
+    for b in next_bundles:
+        added_profit = evaluate_bundle(b, cheapness=0.5)
+        bundles.append({'bundle':b, 'added_profit':added_profit, 'bundle_type': 'complementary'})
 
     print(f"Fetching seasonal bundles...")
     next_bundles = get_bundle_seasonal(season="jan", priority="SKU", depth=5)
-    bundles.append(next_bundles)
+    for b in next_bundles:
+        added_profit = evaluate_bundle(b, cheapness=0.5)
+        bundles.append({'bundle':b, 'added_profit':added_profit, 'bundle_type': 'seasonal'})
 
     print(f"Fetching thematic bundles...")
     next_bundles = get_bundle_thematic(priority="SKU", depth=5)
-    bundles.append(next_bundles)
+    for b in next_bundles:
+        added_profit = evaluate_bundle(b, cheapness=0.5)
+        bundles.append({'bundle':b, 'added_profit':added_profit, 'bundle_type': 'thematic'})
 
     print(f"Fetching cross-sell bundles...")
     next_bundles = get_bundle_cross_sell(priority="SKU", depth=5)
-    bundles.append(next_bundles)
+    for b in next_bundles:
+        added_profit = evaluate_bundle(b, cheapness=0.5)
+        bundles.append({'bundle':b, 'added_profit':added_profit, 'bundle_type': 'cross-sell'})
 
     if userId is None:
         print("No user profile provided, skipping personalized bundles.")
@@ -360,32 +359,28 @@ def get_all_bundles(userId):
 
         print(f"Fetching personalized frequently bought bundles...")
         next_bundles = get_bundle_personal_frequently_bought(this_user_profile, priority="SKU", depth=5)
-        if next_bundles:
-            bundles.append(next_bundles)
+        for b in next_bundles:
+            added_profit = evaluate_bundle(b, cheapness=0.5)
+            bundles.append({'bundle':b, 'added_profit':added_profit, 'bundle_type': 'personal_frequent'})
 
         print(f"Fetching personalized seasonal bundles...")
         next_bundles = get_bundle_personal_seasonal(this_user_profile, season="jan", priority="SKU", depth=5)
-        if next_bundles:
-            bundles.append(next_bundles)
+        for b in next_bundles:
+            added_profit = evaluate_bundle(b, cheapness=0.5)
+            bundles.append({'bundle':b, 'added_profit':added_profit, 'bundle_type': 'personal_seasonal'})
 
         print(f"Fetching personalized discounts bundles...")
         next_bundles = get_bundle_personalized_discounts(this_user_profile)
-        if next_bundles:
-            bundles.append(next_bundles)
+        for b in next_bundles:
+            added_profit = evaluate_bundle(b, cheapness=0.5)
+            bundles.append({'bundle':b, 'added_profit':added_profit, 'bundle_type': 'personal_discount'})
     
-    bundles = [b for b in bundles if b]  # Filter out empty bundles
-    bundles = [item for sublist in bundles for item in sublist]  # Flatten the list of bundles
-    
+    # Sort bundles by added profit
+    bundles.sort(key=lambda x: x['added_profit'], reverse=True)
     print(f"Total bundles found: {len(bundles)}")
-
-    # evaluate each bundle
-    for bundle in bundles:
-        try:
-            profit = evaluate_bundle(bundle, cheapness=0.5)
-            print(f"Bundle {bundle} expected profit: ${profit:.2f}")
-        except Exception as e:
-            print(f"Error evaluating bundle {bundle}: {e}")
-
+    print(f"Top bundles by added profit:")
+    for b in bundles[:20]:
+        print(f"\n\tBundle: {b['bundle']}, Added Profit: ${b['added_profit']:.2f}, Type: {b['bundle_type']}")
 
 
 
