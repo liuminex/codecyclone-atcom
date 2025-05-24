@@ -10,7 +10,7 @@ load_dotenv()
 
 # Gemini setup
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL")
 
 genai.configure(api_key=GEMINI_API_KEY)
 
@@ -21,7 +21,7 @@ orders_df = orders_df.dropna(subset=['UserID'])
 # Predefined category segments
 category_segments = [
     "clothes", "electronics", "beauty", "sports", "home", "health",
-    "toys", "books", "automotive", "grocery", "furniture", "other"
+    "toys", "books", "automotive", "grocery", "furniture", "undetermined"
 ]
 
 import re
@@ -33,10 +33,10 @@ def determine_user_attributes_gemini(shopping_data_lines):
         "You're a customer profiling AI. Based on the shopping data below, determine:\n"
         "- Gender (male, female, or undetermined) (not all items need to be male or female - just consider the majority of them)\n"
         "- Price segment (cheap, average, luxury, or undetermined)\n"
-        f"- Category segment (choose 1 or more from: {', '.join(category_segments)})\n\n"
+        f"- Category segment (only choose one from: {', '.join(category_segments)})\n\n"
         "Shopping history:\n" + "\n".join(shopping_data_lines) +
         "\n\nRespond in JSON format like this:\n"
-        '{\n  "gender": "...",\n  "price_segment": "...",\n  "category_segment": ["...", "..."]\n}'
+        '{\n  "gender": "...",\n  "price_segment": "...",\n  "category_segment": "..."\n}'
     )
 
     try:
@@ -78,12 +78,17 @@ def get_user_profile(userid):
         user_orders.groupby('SKU')['OrderNumber']
         .nunique()
         .reset_index(name='TimesOrdered')
-        .sort_values(by='TimesOrdered', ascending=False)
     )
+
+    # Filter out products bought less than 2 times
+    sku_order_counts = sku_order_counts[sku_order_counts['TimesOrdered'] >= 2]
+
+    sku_order_counts = sku_order_counts.sort_values(by='TimesOrdered', ascending=False)
 
     sku_order_counts = sku_order_counts.merge(
         user_orders[['SKU', 'Item title']].drop_duplicates(), on='SKU', how='left'
     )
+
 
     # Order frequency
     user_order_dates = user_orders[['OrderNumber', 'CreatedDate']].drop_duplicates().sort_values(by='CreatedDate')
@@ -128,7 +133,7 @@ def get_user_profile(userid):
 # Example usage
 if __name__ == "__main__":
 
-    user_ids = orders_df['UserID'].drop_duplicates().tolist()[:5]
+    user_ids = orders_df['UserID'].drop_duplicates().tolist()[:3]
     # 44175
     for userId in user_ids:
         profile = get_user_profile(userId)#["UserAttributes"]
