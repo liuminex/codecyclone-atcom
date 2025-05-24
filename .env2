@@ -1,0 +1,3 @@
+GEMINI_API_KEY=YourGeminiKeyHere
+GEMINI_MODEL="gemini-2.0-flash-lite"
+

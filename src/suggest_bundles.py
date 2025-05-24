@@ -251,7 +251,7 @@ def evaluate_bundle(bundle, cheapness=0.5):
     # Create lookup by product name
     name_to_row = {row['ProductName']: row for _, row in inventory_df.iterrows()}
 
-    conversion_rate = 0.05 # rate at which we expect to sell the bundle
+    conversion_rate = 0.1 # rate at which we expect to sell the bundle
 
     products = []
 
@@ -322,7 +322,7 @@ def calculate_bundle_discount_flexible_percent(products):
 
     return first_product_price, total_price, max_discount
 
-def get_all_bundles(userId):
+def get_all_bundles(userId=None):
 
     bundles = []
 
@@ -379,17 +379,31 @@ def get_all_bundles(userId):
     bundles.sort(key=lambda x: x['added_profit'], reverse=True)
     print(f"Total bundles found: {len(bundles)}")
     print(f"Top bundles by added profit:")
-
-    total_added_profit = 0
     for b in bundles[:20]:
         print(f"\n\tBundle: {b['bundle']}, Added Profit: ${b['added_profit']:.2f}, Type: {b['bundle_type']}")
-        total_added_profit += b['added_profit']
 
-    avg_added_profit = get_average_added_profit(bundles)
-    return bundles, avg_added_profit
+    use_top_x_for_avg = 10
+    avg_added_profit = sum(b['added_profit'] for b in bundles[:use_top_x_for_avg]) / len(bundles[:use_top_x_for_avg]) if bundles else 0
+
+    print(f"\nAverage added profit (including conversion rate): ${avg_added_profit:.2f} per bundle")
+
+    # average number of orders per day
+    orders = pd.read_csv('../data/custom_orders.csv', parse_dates=['CreatedDate'])
+    orders['OrderDate'] = orders['CreatedDate'].dt.date
+    daily_orders = orders.drop_duplicates(subset=['OrderNumber', 'OrderDate'])
+    orders_per_day = daily_orders.groupby('OrderDate')['OrderNumber'].count()
+    average_orders_per_day = orders_per_day.mean()
+    print(f"Average number of orders per day: {average_orders_per_day:.2f}")
 
 
-def get_average_added_profit(example_user_id):
+    avg_total_added_profit = avg_added_profit * average_orders_per_day
+
+    print(f"Average total added profit per day (including conversion rate): ${avg_total_added_profit:.2f}")
+        
+    return bundles, avg_total_added_profit
+
+
+def get_average_added_profit(example_user_id=None):
     _, avg = get_all_bundles(example_user_id)
     return avg
 

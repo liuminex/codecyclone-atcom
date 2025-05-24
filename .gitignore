@@ -1,5 +1,5 @@
 notes.txt
-.~lock.DATA.*
-.bak
+*.~lock.DATA.*
+*.bak
 .env
-.pyc
+*.pyc

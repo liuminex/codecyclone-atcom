@@ -3,6 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from xgboost import XGBRegressor
 
+from suggest_bundles import get_average_added_profit
+
 # Load and preprocess your data here (same as before)
 orders = pd.read_csv('../data/orders.csv', parse_dates=['CreatedDate'])
 orders['OrderDate'] = orders['CreatedDate'].dt.date
@@ -92,10 +94,20 @@ for i in range(fh):
     future_df.loc[future_df['OrderDate'] == current_date, 'TotalOrderAmount'] = pred
     full_df.loc[full_df['OrderDate'] == current_date, 'TotalOrderAmount'] = pred
 
+# 3rd line: forecast of revenues with bundling
+extra_daily_rev = get_average_added_profit()
+
+print(f"Average added profit per day from bundling: {extra_daily_rev}")
+
+# Add the extra daily revenue from bundling to the forecast
+future_bundled_df = future_df.copy()
+future_bundled_df['TotalOrderAmount'] += extra_daily_rev
+
 # Plot the historical + forecast
 plt.figure(figsize=(12,6))
 plt.plot(daily_revenue['OrderDate'], daily_revenue['TotalOrderAmount'], label='Historical Daily Revenue')
 plt.plot(future_df['OrderDate'], future_df['TotalOrderAmount'], label=f'Forecast Next {fh} Days', linestyle='--', marker='')
+plt.plot(future_bundled_df['OrderDate'], future_bundled_df['TotalOrderAmount'], label=f'Bundled Forecast Next {fh} Days', linestyle='--', marker='')
 plt.title(f'Daily Revenue and {fh}-Day Forecast (XGBoost)')
 plt.xlabel('Date')
 plt.ylabel('Revenue')
