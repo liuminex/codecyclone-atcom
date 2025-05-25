@@ -6,11 +6,11 @@ It supports bundling items like matching accessories or seasonal sets to increas
 experience.
 
 Features:
-- data ananlysis
-- recommendation algorithms
-- ai generated features and analysis
-- machine learning sales prediction
-- interactive GUI
+- Data ananlysis
+- Recommendation algorithms
+- AI generated features and analysis
+- Machine learning sales prediction
+- Interactive GUI
 - Generative AI chatbot
 
 more information can be found in the [documentation](documentation.md).
