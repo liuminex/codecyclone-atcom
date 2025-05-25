@@ -3,6 +3,22 @@ import gradio as gr
 import random
 import string
 
+from user_profiling import get_user_profile
+from suggest_bundles import suggest_bundles
+
+
+
+
+def get_revenue_information():
+
+    return "not yet"
+
+
+
+
+
+
+
 # Define your functions
 def my_function(user_input):
     return f"Echo from my_function: {user_input}"

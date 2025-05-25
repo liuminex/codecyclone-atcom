@@ -100,7 +100,7 @@ def get_user_profile(userid):
     user_orders = orders_df[orders_df['UserID'] == userid].copy()
 
     if user_orders.empty:
-        return f"No data found for UserID {userid}"
+        return None
 
     # Determine discounted vs full price items
     user_orders['DiscountAmount'] = (user_orders['OriginalUnitPrice'] - user_orders['FinalUnitPrice']).clip(lower=0)

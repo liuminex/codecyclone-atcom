@@ -51,6 +51,9 @@ def get_bundle_complementary(priority=None, depth=5):
         triplets = [t for t in triplets if any(p in top_skus for p in t)]
 
     bundles = [sku_bundle_to_name(t, sku_to_name) for t in list(triplets)[:depth]]
+
+    bundles = [eval_and_format(b, btype='complementary') for b in bundles]
+
     return bundles
 
 
@@ -79,7 +82,9 @@ def get_bundle_seasonal(season=None, priority=None, depth=5):
 
     for bundle in combinations(skus, 3):
         if not top_skus or any(sku in top_skus for sku in bundle):
-            bundles.append(sku_bundle_to_name(bundle, sku_to_name))
+            bundl = sku_bundle_to_name(bundle, sku_to_name)
+            bundl_eval = eval_and_format(bundl, btype='seasonal')
+            bundles.append(bundl_eval)
         if len(bundles) == depth:
             break
 
@@ -101,7 +106,10 @@ def get_bundle_thematic(priority=None, depth=5):
         skus = group['SKU'].tolist()
         for bundle in combinations(skus, 3):
             if not top_skus or any(sku in top_skus for sku in bundle):
-                bundles.append(sku_bundle_to_name(bundle, sku_to_name))
+
+                bundl = sku_bundle_to_name(bundle, sku_to_name)
+                bundl_eval = eval_and_format(bundl, btype='thematic')
+                bundles.append(bundl_eval)
             if len(bundles) == depth:
                 return bundles
     return bundles
@@ -131,11 +139,19 @@ def get_bundle_cross_sell(priority=None, depth=5):
                 if not top_skus or low in top_skus or high in top_skus:
                     bundles.append(sku_bundle_to_name((low, high), sku_to_name))
                 if len(bundles) == depth:
-                    return bundles
-    return bundles
+
+                    eval_bundles = []
+                    for b in bundles:
+                        eval_bundles.append(eval_and_format(b, btype='cross_sell'))
+                    return eval_bundles
+
+    eval_bundles = []
+    for b in bundles:
+        eval_bundles.append(eval_and_format(b, btype='cross_sell'))
+    return eval_bundles
 
 
-def get_bundle_personal_frequently_bought(user_profile, priority=None, depth=5):
+def get_bundle_personal_frequently_bought(user_profile, priority=None):
     """
     Gets profile data from userid and finds the two most bought products by the user.
     Then adds another product with them based on priority.
@@ -163,6 +179,7 @@ def get_bundle_personal_frequently_bought(user_profile, priority=None, depth=5):
     top_skus = [sku for sku in top_skus if sku in inventory_df['SKU'].values][:2]
 
     if len(top_skus) < 2:
+        print(f"User {user_profile['UserID']} does not have enough frequent products to create a bundle.")
         return []
 
     if priority == "SKU":
@@ -170,10 +187,13 @@ def get_bundle_personal_frequently_bought(user_profile, priority=None, depth=5):
     else:
         third_product = inventory_df.sort_values(by='Margin').iloc[0]['SKU']
 
-    return [sku_bundle_to_name((top_skus[0], top_skus[1], third_product), sku_to_name)]
+    ret  = [sku_bundle_to_name((top_skus[0], top_skus[1], third_product), sku_to_name)]
+    ret = eval_and_format(ret, btype='personal_frequent')
+
+    return [ret]
 
 
-def get_bundle_personal_seasonal(user_profile, season=None, priority=None, depth=5):
+def get_bundle_personal_seasonal(user_profile, priority=None):
     """
     Gets profile data from userid and finds the seasonality of the user - if exists.
     Then finds top product bought by the user that has the same seasonality.
@@ -188,8 +208,9 @@ def get_bundle_personal_seasonal(user_profile, season=None, priority=None, depth
     orders = pd.read_csv('../data/custom_orders.csv')
 
     user_id = user_profile.get("UserID")
-    user_seasonality = season or user_profile.get('SeasonalTrend', None)
-    if not user_seasonality:
+    user_seasonality = user_profile.get('SeasonalTrend')
+    if user_seasonality == "No strong seasonal trend.":
+        print(f"User {user_id} does not have a seasonal trend, skipping seasonal bundle.")
         return []
 
     print(f"User {user_id} seasonal preference: {user_seasonality}")
@@ -219,7 +240,11 @@ def get_bundle_personal_seasonal(user_profile, season=None, priority=None, depth
     else:
         second_product = seasonal_products.sort_values(by='Margin').iloc[0]['SKU']
 
-    return [first_product, second_product]
+    the_bundle = [first_product, second_product]
+
+    ret = eval_and_format(the_bundle, btype='personal_seasonal')
+
+    return [ret]
 
 
 
@@ -238,6 +263,8 @@ def get_bundle_personalized_discounts(user_profile):
         bundles.append(sku_bundle_to_name(tuple(sorted_skus[:3]), sku_to_name))
         bundles.append(sku_bundle_to_name(tuple(sorted_skus[:2]), sku_to_name))
 
+    bundles = [eval_and_format(b, btype='personal_discount') for b in bundles]
+
     return bundles
 
 def evaluate_bundle(bundle, cheapness=0.5):
@@ -255,9 +282,9 @@ def evaluate_bundle(bundle, cheapness=0.5):
 
     products = []
 
-    print(f"Evaluating bundle:")
-    for product in bundle:
-        print(f"\t- {product}")
+    #print(f"Evaluating bundle:")
+    #for product in bundle:
+    #    print(f"\t- {product}")
 
     for product in bundle:
         product_name = product if isinstance(product, str) else product[0]
@@ -296,7 +323,7 @@ def evaluate_bundle(bundle, cheapness=0.5):
 
     #print(f"\tNew total price after discount = ${new_price_total:.2f}")
     #print(f"\tBundle profit evaluation: First product price = ${first_product_price:.2f}")
-    print(f"\tExpected profit gain = ${added_profit:.2f}")
+    #print(f"\tExpected profit gain = ${added_profit:.2f}")
 
     return added_profit
 
@@ -321,6 +348,84 @@ def calculate_bundle_discount_flexible_percent(products):
     max_discount = (total_price - discounted_price) / total_price
 
     return first_product_price, total_price, max_discount
+
+
+def get_all_personalized_bundles(userId=None, priority=None):
+    """
+    returns list of objects containing list of bundles, added profit and bundle type
+    """
+    bundles = []
+
+    this_user_profile = get_user_profile(userId)
+
+    if this_user_profile is None:
+        print("No user profile provided, skipping personalized bundles.")
+        return []
+
+    print(f"Fetching personalized frequently bought bundles...")
+    next_bundles = get_bundle_personal_frequently_bought(this_user_profile, priority=priority)
+    print(f"Found {len(next_bundles)} personalized frequently bought bundles.")
+    bundles.extend(next_bundles)
+
+    print(f"Fetching personalized seasonal bundles...")
+    next_bundles = get_bundle_personal_seasonal(this_user_profile, priority=priority)
+    print(f"Found {len(next_bundles)} personalized seasonal bundles.")
+    bundles.extend(next_bundles)
+
+    print(f"Fetching personalized discounts bundles...")
+    next_bundles = get_bundle_personalized_discounts(this_user_profile)
+    print(f"Found {len(next_bundles)} personalized discounts bundles.")
+    bundles.extend(next_bundles)
+
+    return bundles
+
+def eval_and_format(bundle, cheapness=0.5, btype="unset"):
+    """
+    Evaluate a bundle and return it with added profit and type.
+    """
+    added_profit = evaluate_bundle(bundle, cheapness)
+    return {'bundle': bundle, 'added_profit': added_profit, 'bundle_type': btype}
+
+
+def print_bundles(bundles):
+    """
+    Print the bundles with their added profit and type.
+    """
+    if not bundles:
+        print("No bundles found.")
+        return
+
+    print(f"--------------------------------------------\nTotal bundles found: {len(bundles)}")
+    for b in bundles:
+        print(f"Bundle [{b['bundle_type']}] - added profit: ${b['added_profit']:.2f}")
+        for product in b['bundle']:
+            print(f"\t- {product}")
+
+def sort_bundles(bundles):
+    return sorted(bundles, key=lambda x: x['added_profit'], reverse=True)
+
+def get_bundles(type="thematic", depth=3, userID=None, priority=None,season="jan"):
+    """
+    type = {complementary, seasonal, thematic, cross-sell, personalized}
+
+    results are already evaluated and formatted
+    """
+
+    print(f"Fetching bundles of type: {type} with priority: {priority} and depth: {depth}, season: {season}, userID: {userID}...")
+
+    if type == "complementary":
+        return get_bundle_complementary(priority=priority, depth=depth)
+    elif type == "seasonal":
+        return get_bundle_seasonal(season=season, priority=priority, depth=depth)
+    elif type == "thematic":
+        return get_bundle_thematic(priority=priority, depth=depth)
+    elif type == "cross-sell":
+        return get_bundle_cross_sell(priority=priority, depth=depth)
+    elif type == "personalized":
+        return get_all_personalized_bundles(userId=userID, priority=priority)
+    else:
+        raise ValueError(f"Unknown bundle type: {type}")
+
 
 def get_all_bundles(userId=None):
 
@@ -364,7 +469,7 @@ def get_all_bundles(userId=None):
             bundles.append({'bundle':b, 'added_profit':added_profit, 'bundle_type': 'personal_frequent'})
 
         print(f"Fetching personalized seasonal bundles...")
-        next_bundles = get_bundle_personal_seasonal(this_user_profile, season="jan", priority="SKU", depth=5)
+        next_bundles = get_bundle_personal_seasonal(this_user_profile)
         for b in next_bundles:
             added_profit = evaluate_bundle(b, cheapness=0.5)
             bundles.append({'bundle':b, 'added_profit':added_profit, 'bundle_type': 'personal_seasonal'})
@@ -410,4 +515,20 @@ def get_average_added_profit(example_user_id=None):
 
 if __name__ == "__main__":
     example_user_id = 44175
-    get_all_bundles(example_user_id)
+    example_user_id = 10416
+
+
+    # get all combinations of bundles
+    bs = get_bundles(type="complementary", depth=5, priority="SKU")
+    print_bundles(bs)
+    bs = get_bundles(type="seasonal", depth=5, priority="SKU", season="jan")
+    print_bundles(bs)
+    bs = get_bundles(type="thematic", depth=5, priority="SKU")
+    print_bundles(bs)
+    bs = get_bundles(type="cross-sell", depth=5, priority="SKU")
+    print_bundles(bs)
+    bs = get_bundles(type="personalized", userID=example_user_id, priority="SKU")
+    print_bundles(bs)
+
+
+
