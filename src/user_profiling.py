@@ -99,7 +99,10 @@ def determine_user_attributes_gemini(shopping_data_lines):
 def get_user_profile(userid):
     user_orders = orders_df[orders_df['UserID'] == userid].copy()
 
+    print(f"Getting profile for user ID: {userid}")
+
     if user_orders.empty:
+        print(f"No orders found for user ID: {userid}")
         return None
 
     # Determine discounted vs full price items
